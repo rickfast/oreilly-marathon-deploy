@@ -1,0 +1,125 @@
+#!/usr/bin/env ruby
+require 'net/http'
+require 'uri'
+require 'json'
+require 'optparse'
+
+@url = 'http://10.141.141.10:8080'
+@uri = URI.parse(@url)
+@headers = {'Content-Type' => 'application/json',
+           'Accept' => 'application/json'}
+
+@http = Net::HTTP.new(@uri.host, @uri.port)
+
+if ARGV.length < 2
+  puts "Usage 'marathon [image] [id]'"
+  puts "Example 'marathon rickfast/weather-service weather-service'"
+  exit 1
+end
+
+image = ARGV[0]
+id = ARGV[1]
+
+puts "Deploying application '#{id}' to Marathon[#{@url}]"
+
+# Build the Marathon JSON given a Docker image and and Marathon ID
+def get_json(image, id)
+  {
+      :container => {
+          :type => 'DOCKER',
+
+          :docker => {
+              :image => image,
+              :network => 'BRIDGE',
+              :portMappings => [{
+                                    :containerPort => 8080,
+                                    :hostPort => 0,
+                                    :servicePort => 0,
+                                    :protocol => 'tcp'
+                                }]
+          }
+      },
+      :id => id,
+      :instances => 2,
+      :cpus => 0.125,
+      :backoff_factor => 1.15,
+      :backoff_seconds => 1,
+      :mem => 128,
+      :disk => 0,
+      :healthChecks => [{
+                            :path => '/health',
+                            :protocol => 'HTTP',
+                            :portIndex => 0,
+                            :gracePeriodSeconds => 90,
+                            :intervalSeconds => 10,
+                            :timeoutSeconds => 20,
+                            :maxConsecutiveFailures => 3
+                        }]
+  }
+end
+
+# Perform a POST deploy if the app doesn't already exist, or else
+# a PUT deploy.
+def deploy(json, id, exists)
+  exists ? put(json, id) : post(json)
+end
+
+# Create and deploy a new application on Marathon.
+def post(json)
+  response = @http.post('/v2/apps', json.to_json, @headers)
+
+  if response.code == '201'
+    JSON.parse(response.body)['deployments'][0]['id']
+  else
+    raise "deployment failed with code #{response.code}"
+  end
+end
+
+# Perform an upgrade on an existing application.
+def put(json, id)
+  response = @http.put("/v2/apps/#{id}", json.to_json, @headers)
+
+  if response.code == '200'
+    JSON.parse(response.body)['deployments'][0]['id']
+  else
+    raise "deployment failed with code #{response.code}"
+  end
+end
+
+# Determines if the application has been created already.
+def app_exists(id)
+  response = @http.get("/v2/apps/#{id}", @headers)
+
+  response.code != '404'
+end
+
+# Checks the list of running deployments to determine if an app
+# is still deploying.
+def still_deploying(deployment_id)
+  response = @http.get("/v2/deployments", @headers)
+
+  response.code == '200' and JSON.parse(response.body).any? { |d| d['id'] == deployment_id }
+end
+
+json = get_json image, id
+exists = app_exists id
+deployment_id = deploy json, id, exists
+
+puts "Deployment '#{deployment_id}' initiated."
+
+tries = 0
+
+while still_deploying(deployment_id)
+  tries += 1
+
+  if tries > 10
+    raise 'Deployment timed out!'
+  end
+
+  puts 'Application still deploying, checking again in 5 seconds.'
+  sleep 5
+end
+
+puts "Application '#{id}' deployed with image '#{image}'."
+
+
