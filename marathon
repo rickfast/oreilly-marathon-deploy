@@ -80,7 +80,7 @@ def put(json, id)
   response = @http.put("/v2/apps/#{id}", json.to_json, @headers)
 
   if response.code == '200'
-    JSON.parse(response.body)['deployments'][0]['id']
+    JSON.parse(response.body)['deploymentId']
   else
     raise "deployment failed with code #{response.code}"
   end
