@@ -7,23 +7,24 @@ require 'optparse'
 @url = 'http://10.141.141.10:8080'
 @uri = URI.parse(@url)
 @headers = {'Content-Type' => 'application/json',
-           'Accept' => 'application/json'}
+            'Accept' => 'application/json'}
 
 @http = Net::HTTP.new(@uri.host, @uri.port)
 
 if ARGV.length < 2
-  puts "Usage 'marathon [image] [id]'"
-  puts "Example 'marathon rickfast/weather-service weather-service'"
+  puts "Usage 'marathon [image] [id] [env]'"
+  puts "Example 'marathon rickfast/weather-service weather-service ELASTICSEARCH_HOST=192.168.99.100'"
   exit 1
 end
 
 image = ARGV[0]
 id = ARGV[1]
+env = ARGV.length == 3 ? ARGV[2] : ''
 
 puts "Deploying application '#{id}' to Marathon[#{@url}]"
 
 # Build the Marathon JSON given a Docker image and and Marathon ID
-def get_json(image, id)
+def get_json(image, id, env)
   {
       :container => {
           :type => 'DOCKER',
@@ -54,7 +55,11 @@ def get_json(image, id)
                             :intervalSeconds => 10,
                             :timeoutSeconds => 20,
                             :maxConsecutiveFailures => 3
-                        }]
+                        }],
+      :env => Hash[env.split(',')
+                       .collect { |var| var.split('=') }
+                       .map {|key, value| [key, value]}]
+
   }
 end
 
@@ -101,7 +106,7 @@ def still_deploying(deployment_id)
   response.code == '200' and JSON.parse(response.body).any? { |d| d['id'] == deployment_id }
 end
 
-json = get_json image, id
+json = get_json image, id, env
 exists = app_exists id
 deployment_id = deploy json, id, exists
 
@@ -121,5 +126,3 @@ while still_deploying(deployment_id)
 end
 
 puts "Application '#{id}' deployed with image '#{image}'."
-
-
