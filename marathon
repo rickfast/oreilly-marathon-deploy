@@ -101,9 +101,14 @@ end
 # Checks the list of running deployments to determine if an app
 # is still deploying.
 def still_deploying(deployment_id)
-  response = @http.get("/v2/deployments", @headers)
+  response = @http.get('/v2/deployments', @headers)
 
   response.code == '200' and JSON.parse(response.body).any? { |d| d['id'] == deployment_id }
+end
+
+# Deletes a running deployment.
+def delete_deployment(deployment_id)
+  @http.delete("/v2/deployments/#{deployment_id}", @headers)
 end
 
 json = get_json image, id, env
@@ -118,6 +123,7 @@ while still_deploying(deployment_id)
   tries += 1
 
   if tries > 10
+    delete_deployment deployment_id
     raise 'Deployment timed out!'
   end
 
