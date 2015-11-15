@@ -2,7 +2,6 @@
 require 'net/http'
 require 'uri'
 require 'json'
-require 'optparse'
 
 @url = 'http://10.141.141.10:8080'
 @uri = URI.parse(@url)
@@ -63,6 +62,13 @@ def get_json(image, id, env)
   }
 end
 
+# Determines if the application has been created already.
+def app_exists(id)
+  response = @http.get("/v2/apps/#{id}", @headers)
+
+  response.code != '404'
+end
+
 # Perform a POST deploy if the app doesn't already exist, or else
 # a PUT deploy.
 def deploy(json, id, exists)
@@ -91,13 +97,6 @@ def put(json, id)
   end
 end
 
-# Determines if the application has been created already.
-def app_exists(id)
-  response = @http.get("/v2/apps/#{id}", @headers)
-
-  response.code != '404'
-end
-
 # Checks the list of running deployments to determine if an app
 # is still deploying.
 def still_deploying(deployment_id)
@@ -122,7 +121,7 @@ tries = 0
 while still_deploying(deployment_id)
   tries += 1
 
-  if tries > 10
+  if tries > 30
     delete_deployment deployment_id
     raise 'Deployment timed out!'
   end
