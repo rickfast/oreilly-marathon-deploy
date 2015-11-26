@@ -121,7 +121,7 @@ tries = 0
 while still_deploying(deployment_id)
   tries += 1
 
-  if tries > 30
+  if tries > 100
     delete_deployment deployment_id
     raise 'Deployment timed out!'
   end
